@@ -1,55 +1,70 @@
-from pydantic import BaseModel, EmailStr
-from typing import Optional, List
-from bson import ObjectId
+from fastapi import HTTPException
+from typing import List
+# from src.db.database import client  # Assuming client is set in app.state.db
+from src.services.user.model import User
+from src.services.user.serializer import UserRequestSerializer, UserResponseSerializer
+from bson import ObjectId  # For handling ObjectId
+from fastapi import Request
 
-# 🟢 Serializer: Converts MongoDB Object to JSON Response
-class UserResponse(BaseModel):
-    id: str
-    name: str
-    email: EmailStr 
-    age: Optional[int]
+class UserService:
 
     @classmethod
-    def serialize(cls,user) -> dict:
+    async def create_user(
+        cls,
+        request: Request, 
+        user_data: UserRequestSerializer
+    ) :
+        db = request.app.state.db  # Access MongoDB
+        users_collection = db.get_collection('users')
+
+        user_dict = user_data.model_dump()
+
+        result = await users_collection.insert_one(user_dict)
+
+        if not result.inserted_id:
+            raise Exception("Failed to insert user")
+
         return {
-            "id": str(user["_id"]),
-            "name": user["name"],
-            "email": user["email"],
-            "age": user.get("age"),
+            "id": str(result.inserted_id),
+            **user_dict
         }
 
     @classmethod
-    def serialize_list(cls,users) -> List[dict]:
-        return [UserResponse.serialize(user) for user in users]
+    async def get_user(cls, request: Request, user_id: str):
+        db = request.app.state.db
+        users_collection = db.get_collection('users')
 
-# 🟢 Request Schemas
-class UserCreate(BaseModel):
-    name: str
-    email: EmailStr
-    age: Optional[int] = None
+        user = await users_collection.find_one({"_id": ObjectId(user_id)})
+        if not user:
+            return None
 
-class UserUpdate(BaseModel):
-    name: Optional[str] = None
-    email: Optional[EmailStr] = None
-    age: Optional[int] = None
+        user["id"] = str(user["_id"])
+        del user["_id"]
+        return user
 
-# 🟢 Query Schema (Filtering Users)
-class UserQuery(BaseModel):
-    name: Optional[str] = None
-    email: Optional[EmailStr] = None
-    min_age: Optional[int] = None
-    max_age: Optional[int] = None
+    @classmethod
+    async def update_user(cls, request: Request, user_id: str, user_data: UserRequestSerializer):
+        db = request.app.state.db
+        users_collection = db.get_collection('users')
 
-    def build_query(self) -> dict:
-        query = {}
+        user_dict = user_data.model_dump()
+        result = await users_collection.update_one(
+            {"_id": ObjectId(user_id)},
+            {"$set": user_dict}
+        )
 
-        if self.name:
-            query["name"] = {"$regex": self.name, "$options": "i"}  # Case-insensitive
-        if self.email:
-            query["email"] = self.email
-        if self.min_age is not None:
-            query["age"] = {"$gte": self.min_age}
-        if self.max_age is not None:
-            query.setdefault("age", {})["$lte"] = self.max_age
+        if result.modified_count == 0:
+            return None
 
-        return query
+        updated_user = await users_collection.find_one({"_id": ObjectId(user_id)})
+        updated_user["id"] = str(updated_user["_id"])
+        del updated_user["_id"]
+        return updated_user
+    
+    @classmethod
+    async def delete_user(cls, request: Request, user_id: str):
+        db = request.app.state.db
+        users_collection = db.get_collection('users')
+
+        result = await users_collection.delete_one({"_id": ObjectId(user_id)})
+        return result.deleted_count > 0

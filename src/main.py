@@ -1,6 +1,8 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from src.routers.urls import router as router
+from motor.motor_asyncio import AsyncIOMotorClient
+from src.db.database import startup_db, shutdown_db  # Include DB setup methods
 
 app = FastAPI(title="FastAPI + MongoDB", version="1.0")
 
@@ -14,11 +16,16 @@ app.add_middleware(
 )
 
 # Include Routers
-app.include_router(router)
+@app.on_event("startup")
+async def startup_db_client():
+    app.state.db = AsyncIOMotorClient("mongodb://localhost:27017")["test2"]
 
-# Root Endpoint
+@app.on_event("shutdown")
+async def on_shutdown():
+    await shutdown_db(app)
+
+app.include_router(router)  
+
 @app.get("/")
 async def root():
     return {"message": "Welcome to FastAPI with MongoDB"}
-
-# Run with: `uvicorn main:app

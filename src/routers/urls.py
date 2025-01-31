@@ -1,32 +1,23 @@
-from fastapi import APIRouter, Query
-from src.services.user.controller import (
-    handle_create_user,
-    handle_get_users,
-    handle_get_user_by_id,
-    handle_update_user
-)
-from src.services.user.schema import UserCreate, UserQuery, UserUpdate
+from fastapi import APIRouter, Request
+from src.services.user.controller import UserController
+from src.services.user.serializer import UserRequestSerializer, UserResponseSerializer
+from typing import List
+from fastapi import APIRouter
 
-router = APIRouter(prefix="/users", tags=["Users"])
+router = APIRouter()
+@router.post("/create_user")
+async def create_user(request: Request, user_data: UserRequestSerializer):
+    return await UserController.create_user(request, user_data)
 
-@router.post("/", response_model=dict)
-async def create_user(user: UserCreate):
-    return await handle_create_user(user)
+@router.get("/get_user/{user_id}")
+async def get_user(request: Request, user_id: str):
+    return await UserController.get_user(request, user_id)
 
-@router.get("/", response_model=list)
-async def get_users(
-    name: str = Query(None, description="Filter by name"),
-    email: str = Query(None, description="Filter by email"),
-    min_age: int = Query(None, description="Filter by minimum age"),
-    max_age: int = Query(None, description="Filter by maximum age")
-):
-    query = UserQuery(name=name, email=email, min_age=min_age, max_age=max_age)
-    return await handle_get_users(query)
+@router.put("/update_user/{user_id}")
+async def update_user(request: Request, user_id: str, user_data: UserRequestSerializer):
+    return await UserController.update_user(request, user_id, user_data)
 
-@router.get("/{user_id}", response_model=dict)
-async def get_user_by_id(user_id: str):
-    return await handle_get_user_by_id(user_id)
+@router.delete("/delete_user/{user_id}")
+async def delete_user(request: Request, user_id: str):
+    return await UserController.delete_user(request, user_id)
 
-@router.put("/{user_id}", response_model=dict)
-async def update_user(user_id: str, user_update: UserUpdate):
-    return await handle_update_user(user_id, user_update)
